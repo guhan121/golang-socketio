@@ -6,10 +6,11 @@ import (
 	"io/ioutil"
 	"net/http"
 	"time"
+	"sync"
 )
 
 const (
-	upgradeFailed     = "Upgrade failed: "
+	upgradeFailed = "Upgrade failed: "
 
 	WsDefaultPingInterval   = 30 * time.Second
 	WsDefaultPingTimeout    = 60 * time.Second
@@ -29,35 +30,37 @@ var (
 type WebsocketConnection struct {
 	socket    *websocket.Conn
 	transport *WebsocketTransport
+	writeLock     *sync.Mutex
 }
 
-func (wsc *WebsocketConnection) GetMessage() (message string, err error) {
+func (wsc *WebsocketConnection) GetMessage() (message []byte, messageType int, err error) {
 	wsc.socket.SetReadDeadline(time.Now().Add(wsc.transport.ReceiveTimeout))
 	msgType, reader, err := wsc.socket.NextReader()
 	if err != nil {
-		return "", err
+		//fmt.Println("wsc.socket.NextReader")
+		return nil, msgType, err
 	}
+
+	//fmt.Println(msgType)
 
 	//support only text messages exchange
 	if msgType != websocket.TextMessage {
-		return "", ErrorBinaryMessage
+		//fmt.Println("---> msgType", msgType)
+		//		return "", ErrorBinaryMessage
 	}
 
 	data, err := ioutil.ReadAll(reader)
+	//fmt.Println(data)
 	if err != nil {
-		return "", ErrorBadBuffer
+		//fmt.Println("ErrorBadBuffer")
+		return nil, msgType, ErrorBadBuffer
 	}
-	text := string(data)
-
-	//empty messages are not allowed
-	if len(text) == 0 {
-		return "", ErrorPacketWrong
-	}
-
-	return text, nil
+	return data, msgType, nil
 }
 
 func (wsc *WebsocketConnection) WriteMessage(message string) error {
+	wsc.writeLock.Lock()
+	defer wsc.writeLock.Unlock()
 	wsc.socket.SetWriteDeadline(time.Now().Add(wsc.transport.SendTimeout))
 	writer, err := wsc.socket.NextWriter(websocket.TextMessage)
 	if err != nil {
@@ -73,6 +76,23 @@ func (wsc *WebsocketConnection) WriteMessage(message string) error {
 	return nil
 }
 
+func (wsc *WebsocketConnection) WriteBytes(bytes []byte) error {
+	wsc.writeLock.Lock()
+	defer wsc.writeLock.Unlock()
+	wsc.socket.SetWriteDeadline(time.Now().Add(wsc.transport.SendTimeout))
+	writer, err := wsc.socket.NextWriter(websocket.BinaryMessage)
+	if err != nil {
+		return err
+	}
+
+	if _, err := writer.Write(bytes); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+	return nil
+}
 func (wsc *WebsocketConnection) Close() {
 	wsc.socket.Close()
 }
@@ -99,7 +119,7 @@ func (wst *WebsocketTransport) Connect(url string) (conn Connection, err error) 
 		return nil, err
 	}
 
-	return &WebsocketConnection{socket, wst}, nil
+	return &WebsocketConnection{socket, wst,&sync.Mutex{}}, nil
 }
 
 func (wst *WebsocketTransport) HandleConnection(
@@ -116,7 +136,7 @@ func (wst *WebsocketTransport) HandleConnection(
 		return nil, ErrorHttpUpgradeFailed
 	}
 
-	return &WebsocketConnection{socket, wst}, nil
+	return &WebsocketConnection{socket, wst,&sync.Mutex{}}, nil
 }
 
 /**

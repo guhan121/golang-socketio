@@ -2,9 +2,9 @@ package gosocketio
 
 import (
 	"encoding/json"
-	"github.com/graarh/golang-socketio/protocol"
 	"sync"
-	"reflect"
+	"github.com/guhan121/golang-socketio/protocol"
+	"fmt"
 )
 
 const (
@@ -23,7 +23,7 @@ Contains maps of message processing functions
 */
 type methods struct {
 	messageHandlers     map[string]*caller
-	messageHandlersLock sync.RWMutex
+	messageHandlersLock sync.Mutex
 
 	onConnection    systemHandler
 	onDisconnection systemHandler
@@ -56,9 +56,8 @@ func (m *methods) On(method string, f interface{}) error {
 Find message processing function associated with given method
 */
 func (m *methods) findMethod(method string) (*caller, bool) {
-	m.messageHandlersLock.RLock()
-	defer m.messageHandlersLock.RUnlock()
-
+	m.messageHandlersLock.Lock()
+	defer m.messageHandlersLock.Unlock()
 	f, ok := m.messageHandlers[method]
 	return f, ok
 }
@@ -79,28 +78,27 @@ func (m *methods) callLoopEvent(c *Channel, event string) {
 	f.callFunc(c, &struct{}{})
 }
 
-/**
-Check incoming message
-On ack_resp - look for waiter
-On ack_req - look for processing function and send ack_resp
-On emit - look for processing function
-*/
 func (m *methods) processIncomingMessage(c *Channel, msg *protocol.Message) {
 	switch msg.Type {
 	case protocol.MessageTypeEmit:
+		//todo 读取二进制数据
 		f, ok := m.findMethod(msg.Method)
 		if !ok {
+			fmt.Println("MessageTypeEmit findMethod err:",msg.Method)
 			return
 		}
 
+		//函数不存在参数直接调用
 		if !f.ArgsPresent {
 			f.callFunc(c, &struct{}{})
 			return
 		}
 
+		//解析参数
 		data := f.getArgs()
 		err := json.Unmarshal([]byte(msg.Args), &data)
 		if err != nil {
+			//fmt.Println("json.Unmarshal",msg.Method, err)
 			return
 		}
 
@@ -108,29 +106,32 @@ func (m *methods) processIncomingMessage(c *Channel, msg *protocol.Message) {
 
 	case protocol.MessageTypeAckRequest:
 		f, ok := m.findMethod(msg.Method)
-		if !ok || !f.Out {
+		if !ok {
+			fmt.Println("MessageTypeAckRequest findMethod err:",msg.Method)
 			return
 		}
-
-		var result []reflect.Value
-		if f.ArgsPresent {
-			//data type should be defined for unmarshall
-			data := f.getArgs()
-			err := json.Unmarshal([]byte(msg.Args), &data)
-			if err != nil {
-				return
-			}
-
-			result = f.callFunc(c, data)
-		} else {
-			result = f.callFunc(c, &struct{}{})
-		}
-
-		ack := &protocol.Message{
-			Type:  protocol.MessageTypeAckResponse,
-			AckId: msg.AckId,
-		}
-		send(ack, c, result[0].Interface())
+		f.callFunc(c, &msg.Data)
+		return
+		//var result []reflect.Value
+		//
+		//if f.ArgsPresent {
+		//	//data type should be defined for unmarshall
+		//	data := f.getArgs()
+		//	err := json.Unmarshal([]byte(msg.Args), &data)
+		//	if err != nil {
+		//		return
+		//	}
+		//
+		//	result = f.callFunc(c, data)
+		//} else {
+		//	result = f.callFunc(c, &struct{}{})
+		//}
+		//
+		//ack := &protocol.Message{
+		//	Type:  protocol.MessageTypeAckResponse,
+		//	AckId: msg.AckId,
+		//}
+		//send(ack, c, result[0].Interface())
 
 	case protocol.MessageTypeAckResponse:
 		waiter, err := c.ack.getWaiter(msg.AckId)

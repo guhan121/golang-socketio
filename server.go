@@ -7,12 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/graarh/golang-socketio/protocol"
-	"github.com/graarh/golang-socketio/transport"
 	"math/rand"
 	"net/http"
 	"sync"
 	"time"
+	"github.com/guhan121/golang-socketio/transport"
+	"github.com/guhan121/golang-socketio/protocol"
 )
 
 const (
@@ -285,19 +285,28 @@ func onDisconnectCleanup(c *Channel) {
 }
 
 func (s *Server) SendOpenSequence(c *Channel) {
-	jsonHdr, err := json.Marshal(&c.header)
+	jsonHdr, err := json.Marshal(&c.Header)
 	if err != nil {
 		panic(err)
 	}
 
-	c.out <- protocol.MustEncode(
+	mustEncode := protocol.MustEncode(
 		&protocol.Message{
 			Type: protocol.MessageTypeOpen,
 			Args: string(jsonHdr),
 		},
 	)
 
-	c.out <- protocol.MustEncode(&protocol.Message{Type: protocol.MessageTypeEmpty})
+	rs := []byte(mustEncode)
+	for _, r := range rs {
+		c.out <- r
+	}
+	encode := protocol.MustEncode(&protocol.Message{Type: protocol.MessageTypeEmpty})
+
+	rs1 := []byte(encode)
+	for _, r := range rs1 {
+		c.out <- r
+	}
 }
 
 /**
@@ -321,7 +330,7 @@ func (s *Server) SetupEventLoop(conn transport.Connection, remoteAddr string,
 	c.initChannel()
 
 	c.server = s
-	c.header = hdr
+	c.Header = hdr
 
 	s.SendOpenSequence(c)
 

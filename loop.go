@@ -3,11 +3,12 @@ package gosocketio
 import (
 	"encoding/json"
 	"errors"
-	"github.com/graarh/golang-socketio/protocol"
-	"github.com/graarh/golang-socketio/transport"
 	"net/http"
 	"sync"
 	"time"
+	"github.com/guhan121/golang-socketio/transport"
+	"github.com/guhan121/golang-socketio/protocol"
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -40,8 +41,8 @@ ping is automatic
 type Channel struct {
 	conn transport.Connection
 
-	out    chan string
-	header Header
+	out    chan byte
+	Header Header
 
 	alive     bool
 	aliveLock sync.Mutex
@@ -58,7 +59,7 @@ create channel, map, and set active
 */
 func (c *Channel) initChannel() {
 	//TODO: queueBufferSize from constant to server or client variable
-	c.out = make(chan string, queueBufferSize)
+	c.out = make(chan byte, queueBufferSize)
 	c.ack.resultWaiters = make(map[int](chan string))
 	c.alive = true
 }
@@ -67,7 +68,7 @@ func (c *Channel) initChannel() {
 Get id of current socket connection
 */
 func (c *Channel) Id() string {
-	return c.header.Sid
+	return c.Header.Sid
 }
 
 /**
@@ -99,8 +100,10 @@ func closeChannel(c *Channel, m *methods, args ...interface{}) error {
 	for len(c.out) > 0 {
 		<-c.out
 	}
-	c.out <- protocol.CloseMessage
-
+	rs := []byte(protocol.CloseMessage)
+	for _, r := range rs {
+		c.out <- r
+	}
 	m.callLoopEvent(c, OnDisconnection)
 
 	overfloodedLock.Lock()
@@ -113,27 +116,50 @@ func closeChannel(c *Channel, m *methods, args ...interface{}) error {
 //incoming messages loop, puts incoming messages to In channel
 func inLoop(c *Channel, m *methods) error {
 	for {
-		pkg, err := c.conn.GetMessage()
+		pkg, messageType, err := c.conn.GetMessage()
 		if err != nil {
+			//fmt.Println(",,,,,,,",err)
 			return closeChannel(c, m, err)
 		}
-		msg, err := protocol.Decode(pkg)
-		if err != nil {
-			closeChannel(c, m, protocol.ErrorWrongPacket)
-			return err
-		}
-
-		switch msg.Type {
-		case protocol.MessageTypeOpen:
-			if err := json.Unmarshal([]byte(msg.Source[1:]), &c.header); err != nil {
-				closeChannel(c, m, ErrorWrongHeader)
+		if messageType != websocket.BinaryMessage {
+			msg, err := protocol.Decode(pkg)
+			if err != nil {
+				closeChannel(c, m, protocol.ErrorWrongPacket)
+				return err
 			}
-			m.callLoopEvent(c, OnConnection)
-		case protocol.MessageTypePing:
-			c.out <- protocol.PongMessage
-		case protocol.MessageTypePong:
-		default:
-			go m.processIncomingMessage(c, msg)
+
+			for i := 0; i < msg.Num; i++ {
+				pkg1, messageType1, err := c.conn.GetMessage()
+				if err != nil || messageType1 != websocket.BinaryMessage {
+					//fmt.Println("---------",err)
+					return closeChannel(c, m, err)
+				}
+				//fmt.Println("read %d --- pkg1",i,pkg1)
+				msg.Data = append(msg.Data, pkg1...)
+			}
+
+			switch msg.Type {
+			case protocol.MessageTypeOpen:
+				if err := json.Unmarshal([]byte(msg.Source[1:]), &c.Header); err != nil {
+					closeChannel(c, m, ErrorWrongHeader)
+				}
+				if c.server == nil {
+					//客户端
+					//fmt.Print(c.conn.PingParams())
+				}
+				m.callLoopEvent(c, OnConnection)
+			case protocol.MessageTypePing:
+
+				rs := []byte(protocol.PongMessage)
+				for _, r := range rs {
+					c.out <- r
+				}
+			case protocol.MessageTypePong:
+			default:
+				go m.processIncomingMessage(c, msg)
+			}
+		} else {
+			return errors.New("Binary must read after text!")
 		}
 	}
 	return nil
@@ -168,11 +194,11 @@ func outLoop(c *Channel, m *methods) error {
 		}
 
 		msg := <-c.out
-		if msg == protocol.CloseMessage {
+		if string(msg) == protocol.CloseMessage {
 			return nil
 		}
 
-		err := c.conn.WriteMessage(msg)
+		err := c.conn.WriteMessage(string(msg))
 		if err != nil {
 			return closeChannel(c, m, err)
 		}
@@ -191,6 +217,9 @@ func pinger(c *Channel) {
 			return
 		}
 
-		c.out <- protocol.PingMessage
+		rs := []byte(protocol.PingMessage)
+		for _, r := range rs {
+			c.out <- r
+		}
 	}
 }

@@ -12,13 +12,13 @@ type Connection interface {
 	/**
 	Receive one more message, block until received
 	*/
-	GetMessage() (message string, err error)
+	GetMessage() (message []byte,messageType int, err error)
 
 	/**
 	Send given message, block until sent
 	*/
 	WriteMessage(message string) error
-
+	WriteBytes(bytes []byte) error
 	/**
 	Close current connection
 	*/

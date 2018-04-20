@@ -40,6 +40,8 @@ type Message struct {
 	AckId  int
 	Method string
 	Args   string
-	Source string
+	Source []byte
+	Data   []byte
+	Num      int
 }
 

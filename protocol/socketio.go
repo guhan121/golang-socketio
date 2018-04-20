@@ -7,16 +7,40 @@ import (
 	"strings"
 )
 
-const (
-	open          = "0"
-	msg           = "4"
-	emptyMessage  = "40"
-	commonMessage = "42"
-	ackMessage    = "43"
+// Type of packet.
+type Type byte
 
-	CloseMessage = "1"
-	PingMessage = "2"
-	PongMessage = "3"
+const (
+	// Connect type
+	Connect Type = iota
+	// Disconnect type
+	Disconnect
+	// Event type
+	Event
+	// Ack type
+	Ack  //3
+	// Error type
+	Error
+
+	// BinaryEvent type
+	binaryEvent  //5 - 3 = 2
+	// BinaryAck type
+	binaryAck  //6
+	typeMax
+)
+
+const (
+	open               = "0"
+	CloseMessage       = "1"
+	PingMessage        = "2"
+	PongMessage        = "3"
+	msg                = "4"
+
+	ConnectMessage     = "40"
+	EventMessage       = "42" //4 means websocket msg, 2 means socket.io msg, not ack
+	ackMessage         = "43"
+	binaryEventMessage = "45"
+	binaryAckMessage   = "46" //6
 )
 
 var (
@@ -35,9 +59,11 @@ func typeToText(msgType int) (string, error) {
 	case MessageTypePong:
 		return PongMessage, nil
 	case MessageTypeEmpty:
-		return emptyMessage, nil
-	case MessageTypeEmit, MessageTypeAckRequest:
-		return commonMessage, nil
+		return ConnectMessage, nil
+	case MessageTypeEmit:
+		return binaryEventMessage, nil
+	case MessageTypeAckRequest:
+		return EventMessage, nil
 	case MessageTypeAckResponse:
 		return ackMessage, nil
 	}
@@ -59,6 +85,10 @@ func Encode(msg *Message) (string, error) {
 		result += strconv.Itoa(msg.AckId)
 	}
 
+	if msg.Type == MessageTypeEmit {
+		result += strconv.Itoa(msg.Num)
+		result += "-"
+	}
 	if msg.Type == MessageTypeOpen || msg.Type == MessageTypeClose {
 		return result + msg.Args, nil
 	}
@@ -84,33 +114,46 @@ func MustEncode(msg *Message) string {
 	return result
 }
 
-func getMessageType(data string) (int, error) {
-	if len(data) == 0 {
-		return 0, ErrorWrongMessageType
+func getMessageType(databuf []byte) (int, int, error) {
+	if len(databuf) == 0 {
+		return 0, 0, ErrorWrongMessageType
 	}
+	data := string(databuf)
 	switch data[0:1] {
 	case open:
-		return MessageTypeOpen, nil
+		return MessageTypeOpen, 0, nil
 	case CloseMessage:
-		return MessageTypeClose, nil
+		return MessageTypeClose, 0, nil
 	case PingMessage:
-		return MessageTypePing, nil
+		return MessageTypePing, 0, nil
 	case PongMessage:
-		return MessageTypePong, nil
+		return MessageTypePong, 0, nil
 	case msg:
 		if len(data) == 1 {
-			return 0, ErrorWrongMessageType
+			return 0, 0, ErrorWrongMessageType
 		}
 		switch data[0:2] {
-		case emptyMessage:
-			return MessageTypeEmpty, nil
-		case commonMessage:
-			return MessageTypeAckRequest, nil
+		case ConnectMessage:
+			return MessageTypeEmpty, 0, nil
+		case EventMessage:
+			return MessageTypeAckRequest, 0, nil
+		case binaryEventMessage:
+			i := strings.Index(string(data), "-")
+			x := string(data[2:i])
+			v, _ := strconv.Atoi(x)
+			//fmt.Println("num>>",v)
+			return MessageTypeAckRequest, v, nil
 		case ackMessage:
-			return MessageTypeAckResponse, nil
+			return MessageTypeAckResponse, 0, nil
+		case binaryAckMessage:
+			i := strings.Index(string(data), "-")
+			x := string(data[2:i])
+			v, _ := strconv.Atoi(x)
+			//fmt.Println("num>>>",v)
+			return MessageTypeAckResponse, v, nil
 		}
 	}
-	return 0, ErrorWrongMessageType
+	return 0, 0, ErrorWrongMessageType
 }
 
 /**
@@ -127,10 +170,10 @@ func getAck(text string) (ackId int, restText string, err error) {
 		return 0, "", ErrorWrongPacket
 	}
 
-	ack, err := strconv.Atoi(text[0:pos])
-	if err != nil {
-		return 0, "", err
-	}
+	ack, _ := strconv.Atoi(text[0:pos])
+	//if err != nil {
+	//	return 0, text[pos:], err
+	//}
 
 	return ack, text[pos:], nil
 }
@@ -167,45 +210,48 @@ func getMethod(text string) (method, restText string, err error) {
 		return "", "", ErrorWrongPacket
 	}
 
-	return text[start:end], text[rest : len(text)-1], nil
+	return text[start:end], text[rest: len(text)-1], nil
 }
 
-func Decode(data string) (*Message, error) {
+func Decode(data []byte) (*Message, error) {
 	var err error
 	msg := &Message{}
 	msg.Source = data
 
-	msg.Type, err = getMessageType(data)
+	msg.Type, msg.Num, err = getMessageType(data)
 	if err != nil {
 		return nil, err
 	}
 
 	if msg.Type == MessageTypeOpen {
-		msg.Args = data[1:]
+		msg.Args = string(data)[1:]
+		//fmt.Println("MessageTypeOpen",msg.Args)
 		return msg, nil
 	}
 
 	if msg.Type == MessageTypeClose || msg.Type == MessageTypePing ||
 		msg.Type == MessageTypePong || msg.Type == MessageTypeEmpty {
+		//fmt.Println("msg.Source  >>> ",msg.Type, string(msg.Source))
 		return msg, nil
 	}
 
-	ack, rest, err := getAck(data)
+	ack, rest, err := getAck(string(data))
 	msg.AckId = ack
 	if msg.Type == MessageTypeAckResponse {
 		if err != nil {
 			return nil, err
 		}
-		msg.Args = rest[1 : len(rest)-1]
+		msg.Args = rest[1: len(rest)-1]
 		return msg, nil
 	}
 
 	if err != nil {
 		msg.Type = MessageTypeEmit
-		rest = data[2:]
+		rest = string(data)[2:]
 	}
 
 	msg.Method, msg.Args, err = getMethod(rest)
+	//fmt.Println("msg.Method",msg.Method)
 	if err != nil {
 		return nil, err
 	}
