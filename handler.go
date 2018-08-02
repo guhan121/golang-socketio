@@ -110,6 +110,7 @@ func (m *methods) processIncomingMessage(c *Channel, msg *protocol.Message) {
 			fmt.Println("MessageTypeAckRequest findMethod err:",msg.Method)
 			return
 		}
+		msg.Data = []byte(msg.Args) //MessageTypeAckRequest 没有byte数据，
 		f.callFunc(c, &msg.Data)
 		return
 		//var result []reflect.Value
