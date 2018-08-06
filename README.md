@@ -5,6 +5,8 @@ golang socket.io
 
 For my own project，it can receive Binary Event,if you Don't know how to use, don't download it!!!
 
+可以支持自己测试中的json和pb协议了。
+
 
 ### Roadmap
 
