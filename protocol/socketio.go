@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 	//"fmt"
-	"fmt"
+	//"fmt"
 )
 
 // Type of packet.
