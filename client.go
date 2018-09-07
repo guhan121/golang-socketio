@@ -54,7 +54,7 @@ func Dial(url string, tr transport.Transport ,c *Client) (error) {
 	if err != nil {
 		return err
 	}
-
+	go procLoop(&c.Channel, &c.methods)
 	go inLoop(&c.Channel, &c.methods)
 	go outLoop(&c.Channel, &c.methods)
 	go pinger(&c.Channel)

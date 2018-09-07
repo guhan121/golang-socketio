@@ -41,7 +41,7 @@ ping is automatic
 type Channel struct {
 	conn transport.Connection
 
-	out    chan byte   //部分数据放到这，然后在outloop函数中发送文本格式数据发送出去
+	out    chan byte //部分数据放到这，然后在outloop函数中发送文本格式数据发送出去
 	Header Header
 
 	alive     bool
@@ -52,6 +52,7 @@ type Channel struct {
 	server        *Server
 	ip            string
 	requestHeader http.Header
+	msgChannel    chan *protocol.Message
 }
 
 /**
@@ -62,6 +63,7 @@ func (c *Channel) initChannel() {
 	c.out = make(chan byte, queueBufferSize)
 	c.ack.resultWaiters = make(map[int](chan string))
 	c.alive = true
+	c.msgChannel = make(chan *protocol.Message)
 }
 
 /**
@@ -112,12 +114,26 @@ func closeChannel(c *Channel, m *methods, args ...interface{}) error {
 	overfloodedLock.Lock()
 	delete(overflooded, c)
 	overfloodedLock.Unlock()
+	return nil
+}
 
+//incoming messages loop, puts incoming messages to In channel
+func procLoop(c *Channel, m *methods) error {
+
+	for {
+		msg, ok := <-c.msgChannel
+		if ok {
+			m.processIncomingMessage(c, msg)
+		} else {
+			break
+		}
+	}
 	return nil
 }
 
 //incoming messages loop, puts incoming messages to In channel
 func inLoop(c *Channel, m *methods) error {
+
 	for {
 		pkg, messageType, err := c.conn.GetMessage()
 		//fmt.Println("read --- pkg_head", messageType, string(pkg))
@@ -161,7 +177,8 @@ func inLoop(c *Channel, m *methods) error {
 				}
 			case protocol.MessageTypePong:
 			default:
-				go m.processIncomingMessage(c, msg)
+				c.msgChannel <- msg
+				//go m.processIncomingMessage(c, msg)
 			}
 		} else {
 			return errors.New("Binary must read after text!")

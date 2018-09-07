@@ -40,9 +40,12 @@ var tests = []struct {
 	{"Data", Header{Error, "", 0, false}, "", []interface{}{"error"}, [][]byte{
 		[]byte("4[\"error\"]\n"),
 	}},
-	{"BData", Header{Event, "", 0, false}, "msg", []interface{}{
-		&Buffer{Data: []byte{1, 2, 3}},
-	}, [][]byte{
+	{"BData",
+		Header{Event, "", 0, false},
+		"msg",
+		[]interface{}{
+			&Buffer{Data: []byte{1, 2, 3}},
+		}, [][]byte{
 		[]byte("51-[\"msg\",{\"_placeholder\":true,\"num\":0}]\n"),
 		[]byte{1, 2, 3},
 	}},
@@ -135,7 +138,7 @@ func TestAttachmentEncodeBinary(t *testing.T) {
 		j, err := json.Marshal(a)
 		must.Nil(err)
 		s := test.binaryEncoding
-		fmt.Println(s)
+		fmt.Println("-->",s)
 		should.Equal(s, string(j))
 	}
 }

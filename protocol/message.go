@@ -40,6 +40,7 @@ const (
 	MessageTypeAckResponse = iota
 )
 
+//msg总数据，可能包含多个二进制数据帧
 type Message struct {
 	Type   int
 	AckId  int
