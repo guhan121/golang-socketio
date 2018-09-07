@@ -6,7 +6,6 @@ import (
 	"log"
 	"time"
 	"github.com/guhan121/golang-socketio/protocol"
-	"strings"
 )
 
 var (
@@ -30,7 +29,6 @@ func send(msg *protocol.Message, c *Channel, args interface{}) error {
 		if err != nil {
 			return err
 		}
-
 		msg.Args = string(json)
 	}
 
@@ -42,15 +40,11 @@ func send(msg *protocol.Message, c *Channel, args interface{}) error {
 	if len(c.out) == queueBufferSize {
 		return ErrorSocketOverflood
 	}
-	//fmt.Println("write datas",command)
-	replace := strings.Replace(command, "\\\"", "\"", -1)
-	replace = strings.Replace(replace, "}\"", "}", -1)
-	replace = strings.Replace(replace, "\"{", "{", -1)
-	err1 := c.conn.WriteMessage(strings.Replace(replace," ","",-1))
-	if err1 != nil{
+	err1 := c.conn.WriteMessage(command)
+	if err1 != nil {
 		return err1
 	}
-	if msg.Data != nil{
+	if msg.Data != nil {
 		err1 = c.conn.WriteBytes(append([]byte{4}, msg.Data...))
 	}
 	return err1
@@ -71,20 +65,25 @@ func (c *Channel) Emit(method string, args interface{}) error {
 /**
 Create packet based on given data and send it
 */
-func (c *Channel) EmitData(method string, data []byte,args interface{}) error {
-
+func (c *Channel) EmitData(method string, data []byte, args interface{}) error {
 
 	msg := &protocol.Message{
 		Type:   protocol.MessageTypeEmit,
 		Method: method,
 	}
-	if data!=nil {
+	if data != nil {
 		msg.Data = data
 		msg.Num = 1
 	}
-	return send(msg, c, args)
+	new_args := struct {
+		Placeholder bool `json:"_placeholder"`
+		Num         int  `json:"num"`
+	}{
+		Placeholder: true,
+		Num:         0,
+	}
+	return send(msg, c, new_args)
 }
-
 
 /**
 Create ack packet based on given data and send it and receive response

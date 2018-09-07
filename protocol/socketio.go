@@ -5,12 +5,15 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	//"fmt"
+	//"fmt"
 )
 
 // Type of packet.
 type Type byte
 
 const (
+	// 子类型
 	// Connect type
 	Connect Type = iota
 	// Disconnect type
@@ -30,11 +33,11 @@ const (
 )
 
 const (
-	open               = "0"
-	CloseMessage       = "1"
-	PingMessage        = "2"
-	PongMessage        = "3"
-	msg                = "4"
+	open         = "0"
+	CloseMessage = "1"
+	PingMessage  = "2"
+	PongMessage  = "3"
+	msg          = "4"
 
 	ConnectMessage     = "40"
 	EventMessage       = "42" //4 means websocket msg, 2 means socket.io msg, not ack
@@ -136,7 +139,7 @@ func getMessageType(databuf []byte) (int, int, error) {
 		case ConnectMessage:
 			return MessageTypeEmpty, 0, nil
 		case EventMessage:
-			return MessageTypeAckRequest, 0, nil
+			return MessageTypeEmit, 0, nil
 		case binaryEventMessage:
 			i := strings.Index(string(data), "-")
 			x := string(data[2:i])
@@ -182,35 +185,39 @@ func getAck(text string) (ackId int, restText string, err error) {
 Get message method of current packet, if present
 */
 func getMethod(text string) (method, restText string, err error) {
-	var start, end, rest, countQuote int
-
-	for i, c := range text {
-		if c == '"' {
-			switch countQuote {
-			case 0:
-				start = i + 1
-			case 1:
-				end = i
-				rest = i + 1
-			default:
-				return "", "", ErrorWrongPacket
-			}
-			countQuote++
-		}
-		if c == ',' {
-			if countQuote < 2 {
-				continue
-			}
-			rest = i + 1
-			break
-		}
-	}
-
-	if (end < start) || (rest >= len(text)) {
-		return "", "", ErrorWrongPacket
-	}
-
-	return text[start:end], text[rest: len(text)-1], nil
+	//var start, end, rest, countQuote int
+	//
+	//for i, c := range text {
+	//	if c == '"' {
+	//		switch countQuote {
+	//		case 0:
+	//			start = i + 1
+	//		case 1:
+	//			end = i
+	//			rest = i + 1
+	//		default:
+	//			return "", "", ErrorWrongPacket
+	//		}
+	//		countQuote++
+	//	}
+	//	if c == ',' {
+	//		if countQuote < 2 {
+	//			continue
+	//		}
+	//		rest = i + 1
+	//		break
+	//	}
+	//}
+	//
+	//if (end < start) || (rest >= len(text)) {
+	//	return "", "", ErrorWrongPacket
+	//}
+	//
+	//return text[start:end], text[rest: len(text)-1], nil
+	//
+	arr := []string{}
+	json.Unmarshal([]byte(text),&arr)
+	return arr[0],arr[1],nil
 }
 
 func Decode(data []byte) (*Message, error) {
@@ -251,10 +258,10 @@ func Decode(data []byte) (*Message, error) {
 	}
 
 	msg.Method, msg.Args, err = getMethod(rest)
-	//fmt.Println("msg.Method",msg.Method)
+
 	if err != nil {
 		return nil, err
 	}
-
+	//fmt.Println("-->msg.Method",msg.Method,msg.Args,msg.Type)
 	return msg, nil
 }

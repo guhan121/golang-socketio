@@ -1,9 +1,9 @@
 package gosocketio
 
 import (
-	"encoding/json"
 	"sync"
 	"github.com/guhan121/golang-socketio/protocol"
+
 	"fmt"
 )
 
@@ -81,10 +81,9 @@ func (m *methods) callLoopEvent(c *Channel, event string) {
 func (m *methods) processIncomingMessage(c *Channel, msg *protocol.Message) {
 	switch msg.Type {
 	case protocol.MessageTypeEmit:
-		//todo 读取二进制数据
 		f, ok := m.findMethod(msg.Method)
 		if !ok {
-			fmt.Println("MessageTypeEmit findMethod err:",msg.Method)
+			fmt.Println("MessageTypeEmit findMethod err:", msg.Method)
 			return
 		}
 
@@ -94,49 +93,26 @@ func (m *methods) processIncomingMessage(c *Channel, msg *protocol.Message) {
 			return
 		}
 
-		//解析参数
-		data := f.getArgs()
-		err := json.Unmarshal([]byte(msg.Args), &data)
-		if err != nil {
-			//fmt.Println("json.Unmarshal",msg.Method, err)
-			return
-		}
-
-		f.callFunc(c, data)
+		//fmt.Println("MessageTypeEmit")
+		msg.Data = []byte(msg.Args) //MessageTypeEmit 没有byte数据，直接使用json字符串
+		f.callFunc(c, &msg.Data)
 
 	case protocol.MessageTypeAckRequest:
 		f, ok := m.findMethod(msg.Method)
 		if !ok {
-			fmt.Println("MessageTypeAckRequest findMethod err:",msg.Method)
+			fmt.Println("MessageTypeAckRequest findMethod err:", msg.Method)
 			return
 		}
+		//fmt.Println("MessageTypeAckRequest", "---->", msg.Method, msg)
 		f.callFunc(c, &msg.Data)
 		return
-		//var result []reflect.Value
-		//
-		//if f.ArgsPresent {
-		//	//data type should be defined for unmarshall
-		//	data := f.getArgs()
-		//	err := json.Unmarshal([]byte(msg.Args), &data)
-		//	if err != nil {
-		//		return
-		//	}
-		//
-		//	result = f.callFunc(c, data)
-		//} else {
-		//	result = f.callFunc(c, &struct{}{})
-		//}
-		//
-		//ack := &protocol.Message{
-		//	Type:  protocol.MessageTypeAckResponse,
-		//	AckId: msg.AckId,
-		//}
-		//send(ack, c, result[0].Interface())
 
 	case protocol.MessageTypeAckResponse:
 		waiter, err := c.ack.getWaiter(msg.AckId)
 		if err == nil {
 			waiter <- msg.Args
 		}
+	default:
+
 	}
 }

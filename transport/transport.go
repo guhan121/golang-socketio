@@ -3,6 +3,7 @@ package transport
 import (
 	"net/http"
 	"time"
+	"github.com/gorilla/websocket"
 )
 
 /**
@@ -28,6 +29,8 @@ type Connection interface {
 	Get ping time interval and ping request timeout
 	*/
 	PingParams() (interval, timeout time.Duration)
+
+	GetSocket()(*websocket.Conn)
 }
 
 /**

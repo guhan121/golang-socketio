@@ -41,7 +41,7 @@ ping is automatic
 type Channel struct {
 	conn transport.Connection
 
-	out    chan byte
+	out    chan byte   //部分数据放到这，然后在outloop函数中发送文本格式数据发送出去
 	Header Header
 
 	alive     bool
@@ -71,6 +71,10 @@ func (c *Channel) Id() string {
 	return c.Header.Sid
 }
 
+func (c *Channel) GetConnect() transport.Connection {
+	return c.conn
+}
+
 /**
 Checks that Channel is still alive
 */
@@ -87,7 +91,6 @@ Close channel
 func closeChannel(c *Channel, m *methods, args ...interface{}) error {
 	c.aliveLock.Lock()
 	defer c.aliveLock.Unlock()
-
 	if !c.alive {
 		//already closed
 		return nil
@@ -117,6 +120,7 @@ func closeChannel(c *Channel, m *methods, args ...interface{}) error {
 func inLoop(c *Channel, m *methods) error {
 	for {
 		pkg, messageType, err := c.conn.GetMessage()
+		//fmt.Println("read --- pkg_head", messageType, string(pkg))
 		if err != nil {
 			//fmt.Println(",,,,,,,",err)
 			return closeChannel(c, m, err)
@@ -134,7 +138,8 @@ func inLoop(c *Channel, m *methods) error {
 					//fmt.Println("---------",err)
 					return closeChannel(c, m, err)
 				}
-				//fmt.Println("read %d --- pkg1",i,pkg1)
+				//pkg1_type := pkg1[0]
+				//fmt.Println("read --- pkg_byte", messageType1, i, pkg1_type, "-->",pkg1)
 				msg.Data = append(msg.Data, pkg1...)
 			}
 

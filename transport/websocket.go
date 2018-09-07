@@ -156,3 +156,7 @@ func GetDefaultWebsocketTransport() *WebsocketTransport {
 		BufferSize:     WsDefaultBufferSize,
 	}
 }
+
+func (wsc *WebsocketConnection) GetSocket()(*websocket.Conn) {
+	return wsc.socket
+}
